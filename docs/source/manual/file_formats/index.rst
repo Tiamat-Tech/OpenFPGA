@@ -1,7 +1,7 @@
 File Formats
 ------------
 
-OpenFPGA widely uses XML format for interchangable files
+OpenFPGA widely uses XML format for interchangeable files
 
 
 .. _file_formats:
@@ -24,6 +24,28 @@ OpenFPGA widely uses XML format for interchangable files
 
    io_mapping_file
 
+   io_info_file
+
    bitstream_distribution_file
 
    bus_group_file
+
+   pcf_file
+
+   pin_table_file
+
+   clock_network
+
+   io_naming_file
+
+   module_naming_file
+
+   tile_config_file
+
+   fabric_pin_physical_location_file
+
+   fabric_hierarchy_file
+
+   reference_file
+
+   unique_blocks

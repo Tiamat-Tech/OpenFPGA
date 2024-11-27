@@ -523,9 +523,9 @@ Template
 
 .. option:: <design_technology type="<string>" structure="<string>" num_level="<int>" add_const_input="<bool>" const_input_val="<int>" local_encoder="<bool>"/>
 
-  - ``structure="tree|multi-level|one-level"`` Specify the multiplexer structure for a multiplexer. The structure option is only valid for SRAM-based multiplexers. For RRAM-based multiplexers, currently we only support the one-level structure
+  - ``structure="tree|multi_level|one_level"`` Specify the multiplexer structure for a multiplexer. The structure option is only valid for SRAM-based multiplexers. For RRAM-based multiplexers, currently we only support the one_level structure
 
-  - ``num_level="<int>"`` Specify the number of levels when ``multi-level`` structure is selected.
+  - ``num_level="<int>"`` Specify the number of levels when ``multi_level`` structure is selected.
     
   - ``add_const_input="true|false"`` Specify if an extra input should be added to the multiplexer circuits. For example, an 4-input multiplexer will be turned to a 5-input multiplexer. The extra input will be wired to a constant value, which can be specified through the XML syntax ``const_input_val``.
 
@@ -563,7 +563,7 @@ The code describing this Multiplexer is:
 .. code-block:: xml
 
   <circuit_model type="mux" name="mux_1level" prefix="mux_1level">
-    <design_technology type="cmos" structure="one-level"/>
+    <design_technology type="cmos" structure="one_level"/>
     <input_buffer exist="on" circuit_model_name="inv1x"/> 
     <output_buffer exist="on" circuit_model_name="tapbuf4"/> 
     <pass_gate_logic circuit_model_name="tgate"/>
@@ -619,6 +619,14 @@ This example shows:
 
 Standard Cell Multiplexer
 `````````````````````````
+.. _fig_stdcellmux:
+
+.. figure:: ./figures/stdcellmux.png
+   :width: 100%
+   :alt: Examples of MUX built with standard cells
+
+   An example of a multiplexer built with standard cells: (a) all the MUX2 are the same; (b) the MUX2 at the last stage is a different one 
+
 .. code-block:: xml
 
   <circuit_model type="mux" name="mux_stdcell" prefix="mux_stdcell">
@@ -631,8 +639,30 @@ Standard Cell Multiplexer
     <port type="sram" prefix="sram" size="3"/>
   </circuit_model>
 
-This example shows:
+This example shows (see an illustative example in :numref:`fig_stdcellmux` (a)):
   - A tree-like 4-input CMOS multiplexer built by the standard cell ``MUX2``
+  - All the inputs will be buffered using the circuit model ``inv1x``
+  - All the outputs will be buffered using the circuit model ``tapbuf4``
+  - The multiplexer will have 4 inputs and 3 SRAMs to control which datapath to propagate
+
+Alternatively, user can specify a different standard cell MUX2 at the last stage.
+
+.. code-block:: xml
+
+  <circuit_model type="mux" name="mux_stdcell" prefix="mux_stdcell">
+    <design_technology type="cmos" structure="tree"/>
+    <input_buffer exist="on" circuit_model_name="inv1x"/>
+    <output_buffer exist="on" circuit_model_name="tapdrive4"/>
+    <pass_gate_logic circuit_model_name="MUX2"/>
+    <last_stage_pass_gate_logic circuit_model_name="MUX2D2"/>
+    <port type="input" prefix="in" size="4"/>
+    <port type="output" prefix="out" size="1"/>
+    <port type="sram" prefix="sram" size="3"/>
+  </circuit_model>
+
+This example shows (see an illustative example in :numref:`fig_stdcellmux` (b)):
+  - A tree-like 4-input CMOS multiplexer built by the standard cell ``MUX2``
+  - The last stage A tree-like 4-input CMOS multiplexer built by the standard cell ``MUX2``
   - All the inputs will be buffered using the circuit model ``inv1x``
   - All the outputs will be buffered using the circuit model ``tapbuf4``
   - The multiplexer will have 4 inputs and 3 SRAMs to control which datapath to propagate

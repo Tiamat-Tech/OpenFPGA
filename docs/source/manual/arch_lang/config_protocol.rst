@@ -7,6 +7,17 @@ Configuration protocol is the circuitry designed to program an FPGA.
 As an interface, configuration protocol could be really different in FPGAs, depending on the application context.
 OpenFPGA supports versatile configuration protocol, providing different trade-offs between speed and area. 
 
+Under configuration protocol, if the configuration is QL Memory Bank with flatten BL/WL protocol, there might be 
+optional configuration setting call <ql_memory_bank_config_setting>.
+In QL Memory Bank configuration protocol, configuration bits are organized as BitLine (BL) x WordLine (WL)
+By default, OpenFPGA will keep BL and WL in square shape if possible where BL might be one bit longer than WL in some cases
+  For example: 
+    - If the configuration bits of a PB is 9 bits, then BL=3 and WL=3
+    - If the configuration bits of a PB is 11 bits, then BL=4 and WL=3 (where there is one extra bit as phantom bit)
+    - If the configuration bits of a PB is 14 bits, then BL=4 and WL=4 (where there is two extra bits as phantom bits)
+    
+This QL Memory Bank configuration setting allow OpenFPGA to use a fixed WL size, instead of default approach
+
 Template
 ~~~~~~~~
 
@@ -14,6 +25,9 @@ Template
 
   <configuration_protocol>
     <organization type="<string>" circuit_model_name="<string>" num_regions="<int>"/>
+    <ql_memory_bank_config_setting>
+      <pb_type name="<string>" num_wl="<int>"/>
+    </ql_memory_bank_config_setting>
   </configuration_protocol>
 
 .. option:: type="scan_chain|memory_bank|standalone|frame_based|ql_memory_bank"
@@ -54,6 +68,29 @@ Template
 
   .. note:: For ``ql_memory_bank`` configuration protocol when BL/WL protocol ``shift_register`` is selected, different configuration regions **cannot** share any WLs on the same row! In such case, the default fabric key may not work. Strongly recommend to craft your own fabric key based on your configuration region plannning!
 
+.. option:: name="<string>" 
+
+  Specify the name of PB type, for example: clb, dsp, bram and etc
+
+.. option:: num_wl="<int>"
+
+  Fix the size of WL
+  
+  For example: 
+    Considered that the configuration bits of a PB is 400 bits.
+    
+    If num_wl is not defined, then 
+     - BL will be 20 [=ceiling(square_root(400))]
+     - WL will be 20 [=ceiling(400/20)]
+    
+    If num_wl is defined as 10, then 
+     - WL will be fixed as 10
+     - BL will be 40 [=ceiling(400/10)]
+
+    If num_wl is defined as 32, then 
+     - WL will be fixed as 32
+     - BL will be 13 [=ceiling(400/32)]
+     - There will be 16 bits [=(32x13)-400] as phantom bits. 
 
 Configuration Chain Example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,23 +100,57 @@ It will use the circuit model defined in :numref:`fig_ccff_config_chain`.
 .. code-block:: xml
 
   <configuration_protocol>
-    <organization type="scan_chain" circuit_model_name="ccff" num_regions="<int>"/>
+    <organization type="scan_chain" circuit_model_name="ccff" num_regions="<int>">
+      <programming_clock port="<string>" ccff_head_indices="<string>"/>
+    </organization>
   </configuration_protocol>
 
 .. _fig_ccff_fpga:
 
 .. figure:: figures/ccff_fpga.png
-   :scale: 60%
+   :width: 100%
    :alt: map to buried treasure
  
    Example of a configuration chain to program core logic of a FPGA 
 
 
+.. _fig_multi_region_config_chains:
+
 .. figure:: figures/multi_region_config_chains.png
-   :scale: 100%
+   :width: 100%
    :alt: map to buried treasure
  
    Examples of single- and multiple- region configuration chains
+
+Note that for each configuration chain, its programming clock can be separated or grouped by using the syntax ``programming_clock``.
+
+.. note:: Only applicable to multi-head configuration chains (number of regions is greater than 1). If not specified, all the chains share the same clock.
+
+.. option:: port="<string>"
+
+  Define the port name of a programming clock. This should be a valid global clock port defined in the circuit models whose type is ``ccff``. See details in :ref:`circuit_model_ccff_example`. 
+
+.. option:: ccff_head_indices="<string>"
+
+  Define the indices of the configuration chains which will be controlled by the programming clock defined using XML syntax ``port``. The indices should consist of valid indices  within the range of number of regions.
+
+In the following example, a 6-head configuration protocol (corresponding to :numref:`fig_multi_region_config_chains`) is defined where the first three chains share a common clock ``CK[0]``, where the forth chain is driven by an individual clock ``CK[1]`` and the other two chains are driven by a common clock ``CK[2]``.
+
+.. code-block:: xml
+
+  <circuit_model type="ccff" name="ccff" prefix="ccff" verilog_netlist="ccff.v" spice_netlist="ccff.sp">
+    <port type="input" prefix="D" size="1"/>
+    <port type="output" prefix="Q" size="1"/>
+    <port type="output" prefix="QN" size="1"/>
+    <port type="clock" prefix="CK" size="1" is_global="true" is_prog="true" is_clock="true"/>
+  </circuit_model>
+  <configuration_protocol>
+    <organization type="scan_chain" circuit_model_name="ccff" num_regions="6">
+      <programming_clock port="CK[0]" ccff_head_indices="0,1,2"/>
+      <programming_clock port="CK[1]" ccff_head_indices="3"/>
+      <programming_clock port="CK[2]" ccff_head_indices="4,5"/>
+    </organization>
+  </configuration_protocol>
 
 
 Frame-based Example
@@ -101,7 +172,7 @@ When the decoder of sub block, e.g., the LUT, is enabled, each memory cells can 
 .. _fig_frame_config_protocol_example:
 
 .. figure:: figures/frame_config_protocol_example.png
-   :scale: 25%
+   :width: 100%
    :alt: map to buried treasure
  
    Example of a frame-based memory organization inside a Logic Element
@@ -111,7 +182,7 @@ When the decoder of sub block, e.g., the LUT, is enabled, each memory cells can 
 .. _fig_frame_config_protocol:
 
 .. figure:: figures/frame_config_protocol.png
-   :scale: 60%
+   :width: 100%
    :alt: map to buried treasure
  
    Frame-based memory organization in a hierarchical view
@@ -141,7 +212,7 @@ Users can customized the number of memory banks to be used across the fabrics. B
 .. _fig_memory_bank:
 
 .. figure:: figures/memory_bank.png
-   :scale: 30%
+   :width: 100%
    :alt: map to buried treasure
  
    Example of (a) a memory organization using memory decoders; (b) single memory bank across the fabric; and (c) multiple memory banks across the fabric.
@@ -181,7 +252,7 @@ The BL and WL protocols can be customized through the XML syntax ``bl`` and ``wl
 .. _fig_memory_bank_decoder_based:
 
 .. figure:: figures/memory_bank_decoder.svg
-   :scale: 30%
+   :width: 100%
    :alt: map to buried treasure
  
    Example of (a) a memory organization using address decoders; (b) single memory bank across the fabric; and (c) multiple memory banks across the fabric.
@@ -190,7 +261,7 @@ The BL and WL protocols can be customized through the XML syntax ``bl`` and ``wl
 .. _fig_memory_bank_flatten:
 
 .. figure:: figures/memory_bank_flatten.svg
-   :scale: 30%
+   :width: 100%
    :alt: map to buried treasure
  
    Example of (a) a memory organization with direct access to BL/WL signals; (b) single memory bank across the fabric; and (c) multiple memory banks across the fabric.
@@ -198,7 +269,7 @@ The BL and WL protocols can be customized through the XML syntax ``bl`` and ``wl
 .. _fig_memory_bank_shift_register:
 
 .. figure:: figures/memory_bank_shift_register.svg
-   :scale: 30%
+   :width: 100%
    :alt: map to buried treasure
  
    Example of (a) a memory organization using shift register chains to control BL/WLs; (b) single memory bank across the fabric; and (c) multiple memory banks across the fabric.
@@ -230,7 +301,7 @@ In the standalone configuration protocol, every memory cell of the core logic of
 .. _fig_vanilla_config_protocol:
 
 .. figure:: figures/vanilla_config_protocol.png
-   :scale: 30%
+   :width: 100%
    :alt: map to buried treasure
  
    Vanilla (standalone) memory organization in a hierarchical view

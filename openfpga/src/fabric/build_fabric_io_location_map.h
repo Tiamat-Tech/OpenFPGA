@@ -6,6 +6,7 @@
  *******************************************************************/
 
 #include <string>
+
 #include "device_grid.h"
 #include "io_location_map.h"
 #include "module_manager.h"
@@ -18,7 +19,8 @@
 namespace openfpga {
 
 IoLocationMap build_fabric_io_location_map(const ModuleManager& module_manager,
-                                           const DeviceGrid& grids);
+                                           const DeviceGrid& grids,
+                                           const bool& tiled_fabric);
 
 } /* end namespace openfpga */
 

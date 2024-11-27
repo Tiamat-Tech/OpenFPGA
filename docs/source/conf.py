@@ -26,7 +26,7 @@ import sphinx_rtd_theme
 # For bibtex support
 import sphinxcontrib.bibtex
 # For embedded youtube
-import sphinxcontrib.yt
+import sphinxcontrib.youtube
 # For converting SVG to PNG using rsvg
 import sphinxcontrib.rsvgconverter
 
@@ -37,10 +37,10 @@ copyright = u'2018, Xifan Tang'
 author = u'Xifan Tang'
 
 # The short X.Y version
-version = u''
-# The full version, including alpha/beta/rc tags
-release = u'1.0'
-
+with open("VERSION.md") as ver_f:
+  version = ver_f.readline().rstrip()
+  # The full version, including alpha/beta/rc tags
+  release = version
 
 # -- General configuration ---------------------------------------------------
 
@@ -57,7 +57,7 @@ extensions = [
     'sphinx.ext.graphviz',
     'sphinxcontrib.bibtex',
     'sphinx.ext.autosectionlabel',
-    'sphinxcontrib.yt',
+    'sphinxcontrib.youtube',
     'sphinxcontrib.rsvgconverter',
 ]
 
@@ -185,7 +185,7 @@ texinfo_documents = [
 ]
 
 
-bibtex_bibfiles = ["z_reference.bib"]
+bibtex_bibfiles = ["./appendix/z_reference.bib"]
 
 # -- Options for Epub output -------------------------------------------------
 
@@ -203,3 +203,22 @@ epub_title = project
 
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
+
+# ========
+# Headings
+# ========
+#
+# Headings
+# ========
+#
+# Heading 3
+# ---------
+#
+# Heading 4
+# ^^^^^^^^^
+#
+# Heading 5
+# ~~~~~~~~~
+#
+# Heading 6
+# *********

@@ -1,12 +1,18 @@
-name: linux_build
+name: Test 
 
 # Run CI on push, PR, and weekly.
-
 on:
-  push:
+  workflow_dispatch:
   pull_request:
+  push:
+    branches:
+      - 'master'
   schedule:
     - cron: "0 0 * * 0 " # weekly
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Environment variables
 env:
@@ -22,7 +28,7 @@ env:
 jobs:
   change_detect:
     name: "Detect code changes"
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     outputs:
       # this is output as string, see https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idoutputs
       source_modified: ${{ steps.changes.outputs.status_code == '1' }}
@@ -31,15 +37,15 @@ jobs:
       docker_repo: ${{ steps.changes.outputs.docker_repo }}
     steps:
       - name: Cancel previous
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.12.1
         with:
           access_token: ${{ github.token }}
           
       - name: Checkout OpenFPGA repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: true
+
       - name: Check for source code changes
         id: changes
         run: |
@@ -67,137 +73,343 @@ jobs:
     needs: change_detect
     if: ${{ fromJSON(needs.change_detect.outputs.source_modified) }}
     name: ${{ matrix.config.name }}
-    runs-on: ubuntu-18.04
-    container: ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-build-${{ matrix.config.cc}}
+    runs-on: ubuntu-22.04
+    # Note: dependencies are installed in the container. See details about dependency list in docker/Dockerfile.master
+    # Comment the line out when base image is built again
+    #container: ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-build-${{ matrix.config.cc}}
     # Branch on different OS and settings
     strategy:
       fail-fast: false
       matrix:
         config:
-          - name: "Build Compatibility: GCC-5 (Ubuntu 18.04)"
-            cc: gcc-5
-            cxx: g++-5
-          - name: "Build Compatibility: GCC-6 (Ubuntu 18.04)"
-            cc: gcc-6
-            cxx: g++-6
-          - name: "Build Compatibility: GCC-7 (Ubuntu 18.04)"
-            cc: gcc-7
-            cxx: g++-7
-          - name: "Build Compatibility: GCC-8 (Ubuntu 18.04)"
-            cc: gcc-8
-            cxx: g++-8
-          - name: "Build Compatibility: GCC-9 (Ubuntu 18.04)"
+          - name: "Build Compatibility: GCC-9 (Ubuntu 22.04)"
             cc: gcc-9
             cxx: g++-9
-          - name: "Build Compatibility: Clang-6 (Ubuntu 18.04)"
-            cc: clang-6.0
-            cxx: clang++-6.0
-          - name: "Build Compatibility: Clang-8 (Ubuntu 18.04)"
-            cc: clang-8
-            cxx: clang++-8
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: GCC-10 (Ubuntu 22.04)"
+            cc: gcc-10
+            cxx: g++-10
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: GCC-11 (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: GCC-12 (Ubuntu 22.04)"
+            cc: gcc-12
+            cxx: g++-12
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: Clang-11 (Ubuntu 22.04)"
+            cc: clang-11
+            cxx: clang++-11
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: Clang-12 (Ubuntu 22.04)"
+            cc: clang-12
+            cxx: clang++-12
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: Clang-13 (Ubuntu 22.04)"
+            cc: clang-13
+            cxx: clang++-13
+            dependency_version: "ubuntu22p04"
+          - name: "Build Compatibility: Clang-14 (Ubuntu 22.04)"
+            cc: clang-14
+            cxx: clang++-14
+            dependency_version: "ubuntu22p04"
     # Define the steps to run the build job
     env:
       CC: ${{ matrix.config.cc }}
       CXX: ${{ matrix.config.cxx }}
-      CCACHE_COMPRESS: "true"
-      CCACHE_COMPRESSLEVEL: "6"
-      CCACHE_MAXSIZE: "400M"
-      CCACHE_LOGFILE: ccache_log
-      CCACHE_DIR: /__w/OpenFPGA/.ccache
     steps:
       - name: Cancel previous
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.12.1
         with:
           access_token: ${{ github.token }}
           
       - name: Checkout OpenFPGA repo
-        uses: actions/checkout@v2
-        with:
-          submodules: true
+        uses: actions/checkout@v4
 
+      - name: Install dependencies
+        run: sudo bash ./.github/workflows/install_dependencies_build_${{ matrix.config.dependency_version }}.sh
+      
       - name: Dump tool versions
         run: |
           cmake --version
-          iverilog -V
-          vvp -V
+          ${CC} --version
+          ${CXX} --version
 
-      - name: Prepare ccache timestamp
-        id: ccache_cache_timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
-      - name: Create CMake build environment
-        # Some projects don't allow in-source building, so create a separate build directory
-        # We'll use this as our working directory for all subsequent commands
-        run: cmake -E make_directory build
-
-      - name: Setup ccache
-        uses: actions/cache@v2
-        with:
-          path: |
-            /__w/OpenFPGA/.ccache
-          key: ${{ matrix.config.cc }}-ccache-${{ github.ref}}
-          restore-keys: |
-            ${{ matrix.config.cc }}-ccache-
-
-      - name: Configure CMake
-        # Use a bash shell so we can use the same syntax for environment variable
-        # access regardless of the host operating system
-        shell: bash
-        working-directory: build
-        # Note the current convention is to use the -S and -B options here to specify source
-        # and build directories, but this is only available with CMake 3.13 and higher.
-        # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-        #
-        run: |
-          ccache -p
-          ccache -z
-          cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+      - uses: hendrikmuhs/ccache-action@v1
 
       - name: Build
-        working-directory: build
         shell: bash
-        # Execute the build.  You can specify a specific target with "--target <NAME>"
         run: |
-          cmake --build . --config $BUILD_TYPE
+          make all BUILD_TYPE=$BUILD_TYPE
+
+      - name: Clear error log
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          make all BUILD_TYPE=$BUILD_TYPE -j1
 
       # Check the cache size and see if it is over the limit
       - name: Check ccache size
         run: ccache -s
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
-        if: ${{ matrix.config.cc == 'gcc-8'}}
+        uses: actions/upload-artifact@v4
+        if: ${{ matrix.config.cc == 'gcc-11'}}
         with:
           name: openfpga
           path: |
-            abc/abc
-            abc/libabc.a
-            ace2/ace
-            ace2/libace.a
-            openfpga/libopenfpga.a
-            openfpga/openfpga
-            vpr/libvpr.a
-            vpr/vpr
-            yosys/install/share
-            yosys/install/bin
+            build/vtr-verilog-to-routing/abc/abc
+            build/vtr-verilog-to-routing/abc/libabc.a
+            build/vtr-verilog-to-routing/ace2/ace
+            build/vtr-verilog-to-routing/vpr/libvpr.a
+            build/vtr-verilog-to-routing/vpr/vpr
+            build/openfpga/libopenfpga.a
+            build/openfpga/openfpga_shell.so
+            build/openfpga/openfpga
+            build/yosys/share
+            build/yosys/bin
             openfpga_flow
             openfpga.sh
-  docker_distribution:
-    name: Build docker image for distribution
-    runs-on: ubuntu-latest
-    needs: [linux_build, change_detect]
+
+
+  linux_build_opt:
+    needs: change_detect
+    if: ${{ fromJSON(needs.change_detect.outputs.source_modified) }}
+    name: ${{ matrix.config.name }}
+    runs-on: ubuntu-22.04
+    # Note: dependencies are installed in the container. See details about dependency list in docker/Dockerfile.master
+    # Comment the line out when base image is built again
+    #container: ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-build-${{ matrix.config.cc}}
+    # Branch on different OS and settings
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "Build w/o Yosys (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            cmake_flags: "-DOPENFPGA_WITH_YOSYS=OFF"
+            dependency_version: "ubuntu22p04"
+          - name: "Build w/o Yosys plugin (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            cmake_flags: "-DOPENFPGA_WITH_YOSYS_PLUGIN=OFF"
+            dependency_version: "ubuntu22p04"
+          - name: "Build w/o test (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            cmake_flags: "-DOPENFPGA_WITH_TEST=OFF"
+            dependency_version: "ubuntu22p04"
+          - name: "Build w/o version number (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            cmake_flags: "-DOPENFPGA_WITH_VERSION=OFF"
+            dependency_version: "ubuntu22p04"
+          - name: "Build w/o SWIG support (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            cmake_flags: "-DOPENFPGA_WITH_SWIG=OFF"
+            dependency_version: "ubuntu22p04"
+          - name: "Build with capnproto update (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            cmake_flags: "-DOPENFPGA_UPDATE_UNIQUE_BLOCK_CAPN=ON"
+            dependency_version: "ubuntu22p04"
+    # Define the steps to run the build job
+    env:
+      CC: ${{ matrix.config.cc }}
+      CXX: ${{ matrix.config.cxx }}
     steps:
       - name: Cancel previous
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.12.1
         with:
           access_token: ${{ github.token }}
           
       - name: Checkout OpenFPGA repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo bash ./.github/workflows/install_dependencies_build_${{ matrix.config.dependency_version }}.sh
+      
+      - name: Dump tool versions
+        run: |
+          cmake --version
+          ${CC} --version
+          ${CXX} --version
+
+      - uses: hendrikmuhs/ccache-action@v1
+
+      - name: Build
+        shell: bash
+        run: |
+          make all BUILD_TYPE=$BUILD_TYPE CMAKE_FLAGS="${{ matrix.config.cmake_flags }}"
+
+  ubuntu_support:
+    needs: change_detect
+    if: ${{ fromJSON(needs.change_detect.outputs.source_modified) }}
+    name: ${{ matrix.config.name }}
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "Build (GCC-11 on Ubuntu 20.04)"
+            cc: gcc-11
+            cxx: g++-11
+            dependency_version: "ubuntu20p04"
+          - name: "Build (Clang-10 on Ubuntu 20.04)"
+            cc: clang-10
+            cxx: clang++-10
+            dependency_version: "ubuntu20p04"
+    # Define the steps to run the build job
+    env:
+      CC: ${{ matrix.config.cc }}
+      CXX: ${{ matrix.config.cxx }}
+    steps:
+      - name: Cancel previous
+        uses: styfle/cancel-workflow-action@0.12.1
+        with:
+          access_token: ${{ github.token }}
+          
+      - name: Checkout OpenFPGA repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo bash ./.github/workflows/install_dependencies_build_${{ matrix.config.dependency_version }}.sh
+      
+      - name: Dump tool versions
+        run: |
+          cmake --version
+          ${CC} --version
+          ${CXX} --version
+
+      - uses: hendrikmuhs/ccache-action@v1
+
+      - name: Build
+        shell: bash
+        run: |
+          make all BUILD_TYPE=$BUILD_TYPE 
+
+  debug_build:
+    needs: change_detect
+    if: ${{ fromJSON(needs.change_detect.outputs.source_modified) }}
+    # Prevents from running on forks where no custom runners are available
+    #if: ${{ fromJSON(needs.change_detect.outputs.source_modified) }} && ${{ github.repository_owner == 'lnis-uofu' }}
+    name: ${{ matrix.config.name }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "Debug Build (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            build_type: debug
+            cores: 4
+            dependency_version: "ubuntu22p04"
+    # Define the steps to run the build job
+    env:
+      CC: ${{ matrix.config.cc }}
+      CXX: ${{ matrix.config.cxx }}
+    steps:
+      - name: Cancel previous
+        uses: styfle/cancel-workflow-action@0.12.1
+        with:
+          access_token: ${{ github.token }}
+          
+      - name: Checkout OpenFPGA repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo bash ./.github/workflows/install_dependencies_build_${{ matrix.config.dependency_version }}.sh
+          sudo bash ./.github/workflows/install_dependencies_run_${{ matrix.config.dependency_version }}.sh
+          sudo python3 -m pip install -r requirements.txt
+
+      - name: Dump tool versions
+        run: |
+          cmake --version
+          ${CC} --version
+          ${CXX} --version
+
+      - uses: hendrikmuhs/ccache-action@v1
+
+      - name: Build
+        shell: bash
+        run: |
+          make all BUILD_TYPE=${{ matrix.config.build_type }} -j ${{ matrix.config.cores }}
+
+      - name: Quick Test
+        shell: bash
+        run: |
+          source openfpga.sh && run-task compilation_verification --debug --show_thread_logs
+
+  no_warning_build:
+    needs: change_detect
+    if: ${{ fromJSON(needs.change_detect.outputs.source_modified) }}
+    name: ${{ matrix.config.name }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "No-warning Build (Ubuntu 22.04)"
+            cc: gcc-11
+            cxx: g++-11
+            build_type: release
+            cores: 4
+            dependency_version: "ubuntu22p04"
+    # Define the steps to run the build job
+    env:
+      CC: ${{ matrix.config.cc }}
+      CXX: ${{ matrix.config.cxx }}
+    steps:
+      - name: Cancel previous
+        uses: styfle/cancel-workflow-action@0.12.1
+        with:
+          access_token: ${{ github.token }}
+          
+      - name: Checkout OpenFPGA repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo bash ./.github/workflows/install_dependencies_build_${{ matrix.config.dependency_version }}.sh
+          sudo bash ./.github/workflows/install_dependencies_run_${{ matrix.config.dependency_version }}.sh
+          sudo python3 -m pip install -r requirements.txt
+
+      - name: Dump tool versions
+        run: |
+          cmake --version
+          ${CC} --version
+          ${CXX} --version
+
+      - uses: hendrikmuhs/ccache-action@v1
+
+      - name: Build
+        shell: bash
+        run: |
+          make all BUILD_TYPE=${{ matrix.config.build_type }} -j ${{ matrix.config.cores }} CMAKE_FLAGS="-DOPENFPGA_ENABLE_STRICT_COMPILE=ON"
+
+      - name: Quick Test
+        shell: bash
+        run: |
+          source openfpga.sh && run-task compilation_verification --debug --show_thread_logs
+
+  docker_distribution:
+    name: Build docker image for distribution
+    runs-on: ubuntu-22.04
+    needs: [linux_build, change_detect]
+    steps:
+      - name: Cancel previous
+        uses: styfle/cancel-workflow-action@0.12.1
+        with:
+          access_token: ${{ github.token }}
+          
+      - name: Checkout OpenFPGA repo
+        uses: actions/checkout@v4
       - name: Download a built artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: openfpga
       - name: Set up QEMU
@@ -220,9 +432,10 @@ jobs:
           tags: |
             ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-master:latest
             ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-master:${{ needs.change_detect.outputs.sha_short }}
+
   linux_regression_tests:
     name: linux_regression_tests
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     needs: [linux_build, change_detect]
     container: ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-env
     strategy:
@@ -239,46 +452,50 @@ jobs:
           - name: quicklogic_reg_test
           - name: vtr_benchmark_reg_test
           - name: iwls_benchmark_reg_test
+          - name: tcl_reg_test
     steps:
       - name: Cancel previous
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.12.1
         with:
           access_token: ${{ github.token }}
     
       - name: Checkout OpenFPGA repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Download a built artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: openfpga
       - name: chmod
         run: |
-          chmod +x abc/abc
-          chmod +x ace2/ace
-          chmod +x openfpga/openfpga
-          chmod +x vpr/vpr
-          chmod +x yosys/install/bin/yosys
-          chmod +x yosys/install/bin/yosys-abc
-          chmod +x yosys/install/bin/yosys-config
-          chmod +x yosys/install/bin/yosys-filterlib
-          chmod +x yosys/install/bin/yosys-smtbmc
-      - name: ${{matrix.config.name}}_GCC-8_(Ubuntu 18.04)
+          chmod +x build/vtr-verilog-to-routing/abc/abc
+          chmod +x build/vtr-verilog-to-routing/ace2/ace
+          chmod +x build/vtr-verilog-to-routing/vpr/vpr
+          chmod +x build/openfpga/openfpga
+          chmod +x build/yosys/bin/yosys
+          chmod +x build/yosys/bin/yosys-abc
+          chmod +x build/yosys/bin/yosys-config
+          chmod +x build/yosys/bin/yosys-filterlib
+          chmod +x build/yosys/bin/yosys-smtbmc
+      - name: ${{matrix.config.name}}_GCC-11_(Ubuntu 22.04)
         shell: bash
-        run: source openfpga.sh && source openfpga_flow/regression_test_scripts/${{matrix.config.name}}.sh
+        run: source openfpga.sh && source openfpga_flow/regression_test_scripts/${{matrix.config.name}}.sh --debug --show_thread_logs
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         with:
           name: failed_${{matrix.config.name}}_regression_log
           retention-days: 1
           path: |
             openfpga_flow/**/*.log
+
   docker_regression_tests:
     needs: change_detect
     if: ${{ !fromJSON(needs.change_detect.outputs.source_modified) }}
     name: docker_regression_tests
-    runs-on: ubuntu-18.04
-    container: ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-master:latest
+    runs-on: ubuntu-22.04
+    container: 
+      image: ghcr.io/${{ needs.change_detect.outputs.docker_repo }}/openfpga-master:latest
+      options: --user root --workdir /home/openfpga_user
     strategy:
       fail-fast: false
       matrix:
@@ -293,26 +510,26 @@ jobs:
           - name: quicklogic_reg_test
           - name: vtr_benchmark_reg_test
           - name: iwls_benchmark_reg_test
+          - name: tcl_reg_test
     steps:
       - name: Cancel previous
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.12.1
         with:
           access_token: ${{ github.token }}
           
       - name: Checkout OpenFPGA repo
-        uses: actions/checkout@v2
-        with:
-          submodules: true
-      - name: ${{matrix.config.name}}_GCC-8_(Ubuntu 18.04)
+        uses: actions/checkout@v4
+
+      - name: ${{matrix.config.name}}_GCC-11_(Ubuntu 22.04)
         shell: bash
         run: |
-          bash .github/workflows/install_dependencies_run.sh
+          bash .github/workflows/install_dependencies_run_ubuntu22p04.sh
           ${PYTHON_EXEC} -m pip install -r requirements.txt
           rsync -am --exclude='openfpga_flow/**' /opt/openfpga/. .
           unset OPENFPGA_PATH
-          source openfpga.sh && source openfpga_flow/regression_test_scripts/${{matrix.config.name}}.sh
+          source openfpga.sh && source openfpga_flow/regression_test_scripts/${{matrix.config.name}}.sh --debug --show_thread_logs
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         with:
           name: failed_${{matrix.config.name}}_regression_log

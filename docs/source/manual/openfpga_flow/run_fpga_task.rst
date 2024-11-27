@@ -29,9 +29,9 @@ Similarly  ``regression/regression_quick`` expect following structure::
 Running OpenFPGA Task:
 ~~~~~~~~~~~~~~~~~~~~~~
 
-At a minimum ``open_fpga_flow.py`` requires following command-line arguments::
+At a minimum ``run_fpga_task.py`` requires following command-line arguments::
 
-    open_fpga_flow.py <task1_name> <task2_name> ... [<options>]
+    run_fpga_task.py <task1_name> <task2_name> ... [<options>]
 
 where:
 
@@ -57,6 +57,12 @@ Command-line Options
     Passsing this option exits the OpenFPGA task script with returncode 1,
     if any threads fail to execute successfully. It is mainly used to while
     performing regression test.
+
+.. option:: --default_tool_path
+
+    Specify the paths to tools as well as the keywords to extract QoR results from log files, when running this task. By default, the script will use the ``openfpga_flow/misc/fpgaflow_default_tool_path.conf``.
+
+    .. note:: Please use absolute path!!!
 
 .. option:: --test_run
 
@@ -205,6 +211,8 @@ Synthesis Parameter Sections
 
     In case of running ``blif_vpr_flow`` this option provides the activity files
     to be used to generate testbench for ``bench_label`` benchmark
+
+.. note:: This file is required only when the ``power_analysis`` option in the general section is enabled. Otherwise, it is optional
 
 .. option:: bench<bench_label>_verilog=<source_verilog_file_path>
 

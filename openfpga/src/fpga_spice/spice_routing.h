@@ -5,10 +5,11 @@
  * Include header files that are required by function declaration
  *******************************************************************/
 
-#include "mux_library.h"
-#include "module_manager.h"
-#include "netlist_manager.h"
 #include "device_rr_gsb.h"
+#include "module_manager.h"
+#include "mux_library.h"
+#include "netlist_manager.h"
+#include "rr_graph_view.h"
 
 /********************************************************************
  * Function declaration
@@ -20,6 +21,7 @@ namespace openfpga {
 void print_spice_flatten_routing_modules(NetlistManager& netlist_manager,
                                          const ModuleManager& module_manager,
                                          const DeviceRRGSB& device_rr_gsb,
+                                         const RRGraphView& rr_graph,
                                          const std::string& subckt_dir);
 
 void print_spice_unique_routing_modules(NetlistManager& netlist_manager,
